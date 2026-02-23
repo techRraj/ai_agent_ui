@@ -20,7 +20,7 @@ function App() {
   const wakeCheckInterval = useRef(null);
   
   // Use environment variable with fallback
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+  const API_URL = import.meta.env.VITE_API_URL || 'https://ai-agent-backend-1-g21l.onrender.com';
   const WAKE_TOKEN = import.meta.env.VITE_WAKE_TOKEN || 'your-secret-token-here';
 
   // Scroll to bottom
