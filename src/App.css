@@ -838,3 +838,50 @@ body {
   color: var(--danger);
   margin-top: 0.5rem;
 }
+
+
+/* Language Selector Styles */
+.language-selector {
+  margin-right: 8px;
+}
+
+.lang-select {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.lang-select:hover {
+  border-color: var(--primary-color);
+  background: var(--bg-tertiary);
+}
+
+.lang-select option {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+/* Responsive: Hide label on mobile, show only emoji */
+@media (max-width: 600px) {
+  .lang-select {
+    padding: 6px 8px;
+    font-size: 1rem;
+  }
+}
+
+/* Dark mode adjustments */
+[data-theme='dark'] .lang-select {
+  background: #2d2d3a;
+  border-color: #444;
+}
+
+[data-theme='dark'] .lang-select:hover {
+  border-color: var(--primary-color);
+  background: #3a3a4a;
+}
