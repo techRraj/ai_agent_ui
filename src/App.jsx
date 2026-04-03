@@ -1,8 +1,16 @@
-import { useState, useEffect, useRef } from 'react';
+/**
+ * 🤖 AI Chatbot Frontend - Rajkumar's AI Agent
+ * Features: Language Preference + Wake System + Dark Mode + Lead Management
+ * Author: Rajkumar Chourasiya
+ * Framework: React + Vite
+ */
+
+import { useState, useEffect, useRef, useCallback } from 'react';
 import './App.css';
 
 function App() {
-  const [serverStatus, setServerStatus] = useState('checking');
+  // ===== State Management =====
+  const [serverStatus, setServerStatus] = useState('checking'); // checking | waking | ready | error
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -14,26 +22,30 @@ function App() {
   const [wakeAttempts, setWakeAttempts] = useState(0);
   const [connectionError, setConnectionError] = useState(null);
   
-  // --- 🌍 NEW: Language Preference State ---
-  const [preferredLanguage, setPreferredLanguage] = useState('hin-eng'); // Default: Hinglish
+  // 🌍 Language Preference State
+  const [preferredLanguage, setPreferredLanguage] = useState('hin-eng');
   
+  // ===== Refs =====
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const keepAliveInterval = useRef(null);
   const wakeCheckInterval = useRef(null);
   
-  // Use environment variable with fallback
-  const API_URL = import.meta.env.VITE_API_URL || 'https://ai-agent-backend-1-g21l.onrender.com';
-  const WAKE_TOKEN = import.meta.env.VITE_WAKE_TOKEN || 'your-secret-token-here';
+  // ===== Environment Variables =====
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+  const WAKE_TOKEN = import.meta.env.VITE_WAKE_TOKEN || 'change-me';
 
-  // Scroll to bottom
-  const scrollToBottom = () => {
+  // ===== Utility Functions =====
+  
+  // Scroll to bottom of messages
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  }, []);
 
+  // Auto-scroll when messages change
   useEffect(() => {
     scrollToBottom();
-  }, [messages, typingIndicator]);
+  }, [messages, typingIndicator, scrollToBottom]);
 
   // Load theme & language from localStorage
   useEffect(() => {
@@ -42,16 +54,15 @@ function App() {
     
     setTheme(savedTheme);
     setPreferredLanguage(savedLang);
-    
     document.documentElement.setAttribute('data-theme', savedTheme);
   }, []);
 
-  // Save language preference to localStorage when changed
+  // Save language preference when changed
   useEffect(() => {
     localStorage.setItem('preferredLanguage', preferredLanguage);
   }, [preferredLanguage]);
 
-  // Toggle theme
+  // Toggle dark/light theme
   const toggleTheme = () => {
     const newTheme = theme === 'light' ? 'dark' : 'light';
     setTheme(newTheme);
@@ -59,7 +70,9 @@ function App() {
     document.documentElement.setAttribute('data-theme', newTheme);
   };
 
-  // Keep-alive function to prevent server sleep
+  // ===== Server Wake System =====
+  
+  // Keep-alive ping to prevent Render sleep
   const sendKeepAlive = async () => {
     if (serverStatus !== 'ready') return;
     
@@ -76,7 +89,7 @@ function App() {
       clearTimeout(timeoutId);
       console.log('❤️ Keep-alive sent');
     } catch (error) {
-      console.log('Keep-alive failed (server might be sleeping):', error.message);
+      console.log('Keep-alive failed:', error.message);
       if (serverStatus === 'ready') {
         setServerStatus('checking');
         wakeUpServer();
@@ -84,10 +97,12 @@ function App() {
     }
   };
 
-  // Start keep-alive interval when server is ready
+  // Start keep-alive when server is ready
   useEffect(() => {
     if (serverStatus === 'ready') {
+      // Ping every 10 minutes (Render sleeps after 15 mins)
       keepAliveInterval.current = setInterval(sendKeepAlive, 10 * 60 * 1000);
+      // Health check every 5 minutes
       wakeCheckInterval.current = setInterval(checkServerHealth, 5 * 60 * 1000);
     }
 
@@ -114,7 +129,6 @@ function App() {
       if (response.ok) {
         if (serverStatus !== 'ready') {
           setServerStatus('ready');
-          // Show welcome message based on selected language
           addWelcomeMessage();
         }
         return true;
@@ -139,12 +153,13 @@ function App() {
       clearTimeout(timeoutId);
 
       if (wakeResponse.ok) {
-        console.log('Wake signal sent successfully');
+        console.log('✅ Wake signal sent');
         return true;
       }
     } catch (error) {
       console.log('Wake endpoint failed:', error.message);
       
+      // Fallback: try secure trigger endpoint
       try {
         const triggerResponse = await fetch(
           `${API_URL}/api/trigger-wake?token=${WAKE_TOKEN}`,
@@ -152,7 +167,7 @@ function App() {
         );
         
         if (triggerResponse.ok) {
-          console.log('Trigger wake successful');
+          console.log('✅ Trigger wake successful');
           return true;
         }
       } catch (e) {
@@ -162,14 +177,14 @@ function App() {
     return false;
   };
 
-  // Enhanced wake-up server with exponential backoff
+  // Wake up server with exponential backoff
   const wakeUpServer = async () => {
     setConnectionError(null);
     setWakeAttempts(prev => prev + 1);
     
     let retries = 0;
     const maxRetries = 5;
-    const baseDelay = 3000;
+    const baseDelay = 3000; // 3 seconds
     
     while (retries < maxRetries) {
       try {
@@ -185,7 +200,6 @@ function App() {
         clearTimeout(timeoutId);
         
         if (healthRes.ok) {
-          const data = await healthRes.json();
           setServerStatus('ready');
           setWakeAttempts(0);
           addWelcomeMessage();
@@ -194,6 +208,7 @@ function App() {
       } catch (error) {
         console.log(`Wake attempt ${retries + 1} failed:`, error.message);
         
+        // First failure: trigger wake
         if (retries === 0) {
           setServerStatus('waking');
           await triggerWakeUp();
@@ -202,6 +217,7 @@ function App() {
         retries++;
         
         if (retries < maxRetries) {
+          // Exponential backoff: 3s → 6s → 12s → 24s → 48s
           const waitTime = baseDelay * Math.pow(2, retries - 1);
           setConnectionError(`Wake attempt ${retries}/${maxRetries}...`);
           await new Promise(resolve => setTimeout(resolve, waitTime));
@@ -214,31 +230,22 @@ function App() {
     return false;
   };
 
-  // --- 🌍 NEW: Dynamic Welcome Message based on Language ---
+  // 🌍 Dynamic welcome message based on language
   const addWelcomeMessage = () => {
-    let welcomeText = '';
-    
-    switch(preferredLanguage) {
-      case 'eng':
-        welcomeText = "👋 Hello! I'm Rajkumar, your AI assistant. Which language would you prefer? (English/Hindi/Hinglish)";
-        break;
-      case 'hin':
-        welcomeText = "👋 Namaste! Main Rajkumar hu, aapka AI assistant. Aap kis bhasha mein baat karna pasand karenge? (English/Hindi/Hinglish)";
-        break;
-      case 'hin-eng':
-      default:
-        welcomeText = "👋 Namaste! Main Rajkumar hu. 😊 Aap kis language mein comfortable ho? (English / Hindi / Hinglish)";
-        break;
-    }
+    const welcomeMessages = {
+      'eng': "👋 Hello! I'm Rajkumar, your AI assistant. How can I help you today?",
+      'hin': "👋 नमस्ते! मैं राजकुमार हूँ, आपका AI असिस्टेंट। मैं आपकी कैसे मदद कर सकता हूँ?",
+      'hin-eng': "👋 Namaste! Main Rajkumar hu, aapka AI assistant. 😊 Kaise help kar sakta hu?"
+    };
     
     setMessages([{ 
       sender: 'ai', 
-      text: welcomeText,
+      text: welcomeMessages[preferredLanguage] || welcomeMessages['hin-eng'],
       timestamp: new Date().toISOString()
     }]);
   };
 
-  // Initialize server connection
+  // Initialize server connection on mount
   useEffect(() => {
     wakeUpServer();
     
@@ -249,7 +256,7 @@ function App() {
     };
   }, []);
 
-  // Initialize session with language preference
+  // Initialize session when server is ready or language changes
   useEffect(() => {
     const initSession = async () => {
       if (serverStatus !== 'ready') return;
@@ -259,7 +266,7 @@ function App() {
         const timeoutId = setTimeout(() => controller.abort(), 10000);
 
         const response = await fetch(`${API_URL}/api/session/init`, {
-          method: 'POST',
+          method: 'POST',  // ✅ IMPORTANT: POST method
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ preferredLanguage }), // Send language preference
           signal: controller.signal
@@ -268,15 +275,25 @@ function App() {
         clearTimeout(timeoutId);
 
         const data = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(data.error || 'Session init failed');
+        }
+        
         setSessionId(data.sessionId);
+        console.log('✅ Session initialized:', data.sessionId);
+        
       } catch (error) {
-        console.error('Session init error:', error);
+        console.error('❌ Session init error:', error.message);
+        setConnectionError('Failed to start session');
       }
     };
     
     initSession();
-  }, [serverStatus, preferredLanguage]); // Re-init if language changes
+  }, [serverStatus, preferredLanguage]);
 
+  // ===== Chat Functions =====
+  
   const sendMessage = async () => {
     if (!input.trim() || serverStatus !== 'ready' || loading) return;
 
@@ -294,21 +311,20 @@ function App() {
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 sec timeout
 
       const response = await fetch(`${API_URL}/api/chat`, {
-        method: 'POST',
+        method: 'POST',  // ✅ IMPORTANT: POST method
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           message: currentInput,
           sessionId,
-          preferredLanguage // 🌍 Send language preference with every message
+          preferredLanguage // 🌍 Send language preference
         }),
         signal: controller.signal
       });
 
       clearTimeout(timeoutId);
-      
       const data = await response.json();
       
       setTypingIndicator(false);
@@ -325,18 +341,31 @@ function App() {
           setSessionId(data.sessionId);
         }
       } else {
-        if (response.status === 503 || response.status === 504) {
+        // Handle specific error cases
+        if (response.status === 401) {
+          setMessages(prev => [...prev, { 
+            sender: 'ai', 
+            text: '🔐 API key error. Please contact developer.',
+            timestamp: new Date().toISOString()
+          }]);
+        } else if (response.status === 429) {
+          setMessages(prev => [...prev, { 
+            sender: 'ai', 
+            text: '⏱️ Rate limit reached. Please wait a moment and try again.',
+            timestamp: new Date().toISOString()
+          }]);
+        } else if (response.status === 503 || response.status === 504) {
           setServerStatus('waking');
           setMessages(prev => [...prev, { 
             sender: 'ai', 
-            text: '😴 Server so raha hai. Wake up kar raha hu... 30 sec wait karo.',
+            text: '😴 Server sleeping. Waking up... Please wait 30 seconds.',
             timestamp: new Date().toISOString()
           }]);
           wakeUpServer();
         } else {
           setMessages(prev => [...prev, { 
             sender: 'ai', 
-            text: `❌ ${data.error || 'Kuch error hua'}`,
+            text: `❌ ${data.error || 'Something went wrong'}`,
             timestamp: new Date().toISOString()
           }]);
         }
@@ -345,18 +374,19 @@ function App() {
       setTypingIndicator(false);
       
       if (error.name === 'AbortError' || error.message.includes('Failed to fetch')) {
+        // Network error or server sleeping
         setServerStatus('waking');
         setMessages(prev => [...prev, { 
           sender: 'ai', 
-          text: '😴 Server so raha hai. Wake up kar raha hu... 30 sec wait karo.',
+          text: '😴 Server so raha hai. Wake up kar raha hu... 30 sec wait karein.',
           timestamp: new Date().toISOString()
         }]);
         wakeUpServer();
       } else {
-        console.error('Fetch error:', error);
+        console.error('❌ Fetch error:', error);
         setMessages(prev => [...prev, { 
           sender: 'ai', 
-          text: '❌ Connection error. Internet check karo.',
+          text: '❌ Connection error. Please check your internet.',
           timestamp: new Date().toISOString()
         }]);
       }
@@ -366,6 +396,7 @@ function App() {
     }
   };
 
+  // Load recent leads (admin feature)
   const loadRecentLeads = async () => {
     try {
       const controller = new AbortController();
@@ -376,15 +407,20 @@ function App() {
       });
 
       clearTimeout(timeoutId);
-
       const data = await response.json();
-      setRecentLeads(data.leads || []);
-      setShowLeads(true);
+      
+      if (response.ok) {
+        setRecentLeads(data.leads || []);
+        setShowLeads(true);
+      } else {
+        console.error('Failed to load leads:', data.error);
+      }
     } catch (error) {
-      console.error('Failed to load leads:', error);
+      console.error('❌ Load leads error:', error);
     }
   };
 
+  // Format timestamp to readable time
   const formatTime = (timestamp) => {
     return new Date(timestamp).toLocaleTimeString('en-IN', { 
       hour: '2-digit', 
@@ -392,23 +428,52 @@ function App() {
     });
   };
 
+  // Manual wake up button handler
   const manualWakeUp = () => {
     setServerStatus('waking');
     wakeUpServer();
   };
 
-  // --- 🌍 Language Options Data ---
+  // Handle Enter key press
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
+  // 🌍 Language options for dropdown
   const languageOptions = [
-    { value: 'hin-eng', label: '🇮🇳 Hinglish (Mix)', emoji: '🗣️' },
+    { value: 'hin-eng', label: '🇮🇳 Hinglish', emoji: '🗣️' },
     { value: 'eng', label: '🇬🇧 English', emoji: '🅰️' },
-    { value: 'hin', label: '🇮🇳 Hindi (देवनागरी)', emoji: 'अ' },
+    { value: 'hin', label: '🇮🇳 हिंदी', emoji: 'अ' },
   ];
 
-  // Loading screens (unchanged logic, just keeping for completeness)
+  // ===== Dynamic Placeholder based on language =====
+  const getInputPlaceholder = () => {
+    const placeholders = {
+      'eng': 'Type your message...',
+      'hin': 'अपना संदेश लिखें...',
+      'hin-eng': 'Apna message type karein...'
+    };
+    return placeholders[preferredLanguage] || placeholders['hin-eng'];
+  };
+
+  const getHintText = () => {
+    const hints = {
+      'eng': 'Press Enter ↵ to send',
+      'hin': 'भेजने के लिए Enter ↵ दबाएं',
+      'hin-eng': 'Send karne ke liye Enter ↵ dabayein'
+    };
+    return hints[preferredLanguage] || hints['hin-eng'];
+  };
+
+  // ===== Loading/Error Screens =====
+  
   if (serverStatus === 'checking') {
     return (
       <div className={`app ${theme}`}>
-        <button onClick={toggleTheme} className="theme-toggle">
+        <button onClick={toggleTheme} className="theme-toggle" aria-label="Toggle theme">
           {theme === 'light' ? '🌙' : '☀️'}
         </button>
         <div className="loading-screen">
@@ -421,7 +486,7 @@ function App() {
             <span className="loader-text">🤖</span>
           </div>
           <h2>AI Agent</h2>
-          <p className="status-text">Server status check kar raha hu...</p>
+          <p className="status-text">Server check kar raha hu...</p>
           <div className="progress-bar">
             <div className="progress-fill"></div>
           </div>
@@ -434,7 +499,7 @@ function App() {
   if (serverStatus === 'waking') {
     return (
       <div className={`app ${theme}`}>
-        <button onClick={toggleTheme} className="theme-toggle">
+        <button onClick={toggleTheme} className="theme-toggle" aria-label="Toggle theme">
           {theme === 'light' ? '🌙' : '☀️'}
         </button>
         <div className="loading-screen">
@@ -448,9 +513,10 @@ function App() {
             <p>Chai piyo, main aa raha hu!</p>
           </div>
           <div className="progress-bar">
-            <div className="progress-fill waking" style={{ 
-              width: `${(wakeAttempts / 5) * 100}%` 
-            }}></div>
+            <div 
+              className="progress-fill waking" 
+              style={{ width: `${(wakeAttempts / 5) * 100}%` }}
+            ></div>
           </div>
           {connectionError && <p className="error-text small">{connectionError}</p>}
           <button onClick={manualWakeUp} className="retry-button-small">
@@ -464,7 +530,7 @@ function App() {
   if (serverStatus === 'error') {
     return (
       <div className={`app ${theme}`}>
-        <button onClick={toggleTheme} className="theme-toggle">
+        <button onClick={toggleTheme} className="theme-toggle" aria-label="Toggle theme">
           {theme === 'light' ? '🌙' : '☀️'}
         </button>
         <div className="error-screen">
@@ -478,31 +544,33 @@ function App() {
           <button onClick={manualWakeUp} className="retry-button">
             <span>🔄</span> Retry Wake Up
           </button>
-          <p className="small">Manual wake up try karo</p>
+          <p className="small">Manual wake up try karein</p>
         </div>
       </div>
     );
   }
 
-  // Normal chat UI
+  // ===== Main Chat UI (Server Ready) =====
   return (
     <div className={`app ${theme}`}>
+      {/* Header */}
       <header className="app-header">
         <div className="header-left">
           <div className="logo-container">
-            <span className="logo">🤖</span>
-            <span className="status-badge"></span>
+            <span className="logo" role="img" aria-label="AI Robot">🤖</span>
+            <span className="status-badge" aria-label="Server online"></span>
           </div>
           <h1>AI Agent</h1>
         </div>
         <div className="header-right">
-          {/* --- 🌍 NEW: Language Selector Dropdown --- */}
+          {/* 🌍 Language Selector */}
           <div className="language-selector">
             <select 
               value={preferredLanguage}
               onChange={(e) => setPreferredLanguage(e.target.value)}
               className="lang-select"
-              title="Select Language"
+              aria-label="Select language"
+              title="Choose your preferred language"
             >
               {languageOptions.map(opt => (
                 <option key={opt.value} value={opt.value}>
@@ -512,31 +580,48 @@ function App() {
             </select>
           </div>
           
-          <button onClick={loadRecentLeads} className="icon-button" title="Recent Leads">
-            <span>📋</span>
+          <button 
+            onClick={loadRecentLeads} 
+            className="icon-button" 
+            title="View Recent Leads"
+            aria-label="View leads"
+          >
+            <span role="img" aria-label="Leads">📋</span>
           </button>
-          <button onClick={toggleTheme} className="icon-button">
+          <button 
+            onClick={toggleTheme} 
+            className="icon-button"
+            aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+          >
             {theme === 'light' ? '🌙' : '☀️'}
           </button>
         </div>
       </header>
 
-      <div className="keep-alive-indicator" title="Server is awake">
+      {/* Keep-alive indicator */}
+      <div className="keep-alive-indicator" title="Server is awake" aria-hidden="true">
         <span className="alive-dot"></span>
       </div>
 
+      {/* Leads Modal */}
       {showLeads && (
-        <div className="modal-overlay" onClick={() => setShowLeads(false)}>
+        <div className="modal-overlay" onClick={() => setShowLeads(false)} role="dialog" aria-modal="true">
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3>Recent Leads 📋</h3>
-              <button className="modal-close" onClick={() => setShowLeads(false)}>×</button>
+              <button 
+                className="modal-close" 
+                onClick={() => setShowLeads(false)}
+                aria-label="Close modal"
+              >
+                ×
+              </button>
             </div>
             <div className="modal-body">
               {recentLeads.length > 0 ? (
-                <div className="leads-grid">
+                <div className="leads-grid" role="list">
                   {recentLeads.map((lead, idx) => (
-                    <div key={idx} className="lead-card">
+                    <div key={idx} className="lead-card" role="listitem">
                       <div className="lead-card-header">
                         <strong>{lead.name}</strong>
                         <span className="lead-time">{formatTime(lead.timestamp)}</span>
@@ -554,7 +639,7 @@ function App() {
                 </div>
               ) : (
                 <div className="no-leads">
-                  <span>📭</span>
+                  <span role="img" aria-label="No messages">📭</span>
                   <p>No leads yet</p>
                 </div>
               )}
@@ -563,17 +648,18 @@ function App() {
         </div>
       )}
 
+      {/* Chat Area */}
       <div className="chat-container">
-        <div className="messages-container">
+        <div className="messages-container" role="log" aria-live="polite">
           {messages.map((msg, index) => (
             <div 
               key={index} 
               className={`message ${msg.sender}`}
-              style={{ animationDelay: `${index * 0.1}s` }}
+              style={{ animationDelay: `${index * 0.05}s` }}
             >
               <div className="message-bubble">
                 <div className="message-header">
-                  <span className="avatar">
+                  <span className="avatar" role="img" aria-label={msg.sender === 'user' ? 'You' : 'AI'}>
                     {msg.sender === 'user' ? '👤' : '🤖'}
                   </span>
                   <span className="name">
@@ -593,14 +679,15 @@ function App() {
             </div>
           ))}
           
+          {/* Typing indicator */}
           {typingIndicator && (
             <div className="message ai typing">
               <div className="message-bubble">
                 <div className="message-header">
-                  <span className="avatar">🤖</span>
+                  <span className="avatar" role="img" aria-label="AI">🤖</span>
                   <span className="name">AI Agent</span>
                 </div>
-                <div className="typing-indicator">
+                <div className="typing-indicator" aria-label="AI is typing">
                   <span></span>
                   <span></span>
                   <span></span>
@@ -611,6 +698,7 @@ function App() {
           <div ref={messagesEndRef} />
         </div>
 
+        {/* Input Area */}
         <div className="input-area">
           <div className="input-container">
             <input
@@ -618,33 +706,28 @@ function App() {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-              placeholder={
-                preferredLanguage === 'hin' ? "Apna message likhein..." :
-                preferredLanguage === 'eng' ? "Type your message..." :
-                "Apna message type karein..."
-              }
+              onKeyPress={handleKeyPress}
+              placeholder={getInputPlaceholder()}
               disabled={loading}
               className="chat-input"
+              aria-label="Type your message"
+              autoComplete="off"
             />
             <button 
               onClick={sendMessage} 
               disabled={loading || !input.trim()}
               className="send-button"
+              aria-label="Send message"
             >
               {loading ? (
-                <div className="button-loader"></div>
+                <div className="button-loader" aria-label="Loading"></div>
               ) : (
-                <span>➤</span>
+                <span role="img" aria-label="Send">➤</span>
               )}
             </button>
           </div>
           <div className="input-hint">
-            <span>
-              {preferredLanguage === 'hin' ? "Bhejne ke liye Enter dabayein ↵" :
-               preferredLanguage === 'eng' ? "Press Enter ↵ to send" :
-               "Send karne ke liye Enter ↵ dabayein"}
-            </span>
+            <span>{getHintText()}</span>
           </div>
         </div>
       </div>
